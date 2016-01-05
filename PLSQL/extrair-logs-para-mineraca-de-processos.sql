@@ -1668,9 +1668,6 @@ WHERE upper(ss.situacao) =  'FECHADA' and
 ORDER BY idSolicitacao,dataHoraEventoLog;
 
 
-
-select * from 
-
 /*
 GRAVAR O ARQUIVO EM: D:\Pesquisa de Mestrado\Mineração de Processos\Arquivos de Logs
 */

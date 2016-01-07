@@ -1,4 +1,4 @@
-/**************************************************************************
+﻿/**************************************************************************
       APAGA TABELAS UTILIZADAS PARA A ANÁLISE                          
 **************************************************************************/
 DROP TABLE temporocorrenciasselecionadas;
@@ -230,6 +230,11 @@ UPDATE GRUPO SET DESCRICAO = '[AREA=DTI-ELETR/REDE]' WHERE nome = 'GR_Infra-DTI_
 UPDATE GRUPO SET DESCRICAO = '[AREA=CIT-INFRA]' WHERE nome = 'GR_CentralIT_Gerencia_Configuração';
 
 
+/*
+SELECT IDGRUPO, NOME FROM GRUPO 
+WHERE DESCRICAO  NOT LIKE '%AREA%'
+ORDER BY NOME
+*/
 
 
 /**************************************************************************
@@ -281,6 +286,8 @@ GROUP BY
 ORDER BY COUNT(*) DESC;
 
 */
+
+
 
 
 /*
@@ -832,12 +839,13 @@ GROUP BY
 "Suspensao","SuspensaoSLA","Reativacao", "ReativacaoSLA", "Agendamento", "Compartilhamento","MudancaSLA"
 ORDER BY "Criacao", "Reabertura", "InicioSLA", "Reclassificacao", "Direcionamento", "Execucao", "Encerramento",
 "Suspensao","SuspensaoSLA","Reativacao", "ReativacaoSLA", "Agendamento", "Compartilhamento","MudancaSLA" ;
+
 */
 
 
 
 /* 
-RESULTADO NAS OCORRENCIA SELECIONADAS
+RESULTADO NAS OCORRENCIA NAO SELECIONADAS
 */
 
 /*
@@ -863,7 +871,7 @@ FROM (
 	CASE WHEN COUNT(CASE WHEN categoria = 'MudancaSLA' THEN 1 ELSE NULL END)  > 0 THEN 'X' ELSE '' END  AS  "MudancaSLA",
 	COUNT(*)
 	FROM temporocorrenciasselecionadas
-	WHERE selecionada IS NULL
+	WHERE selecionada = CAST(0  AS  BIT)
 	GROUP BY idsolicitacaoservico, datahora
 	--HAVING COUNT(*) > 1
 )  AS  OcorrenciaRepetidas
@@ -1037,12 +1045,13 @@ TRUNCATE TABLE tempanaliseocorrencias;
 POPULA A TABELA
 */
 
+
 INSERT INTO tempanaliseocorrencias ( 
 idocorrencia, dataocorrencia, idsolicitacaoservico,situacaoatual, categoriaocorrencia, situacaosolicitacao,
 idgrupoexecutor,  nomegrupoexecutor, arearesponsavel, idtecnico, nometecnico, idfluxo, 
 nomefluxo, versao, idgrupoexecutoroc ,  nomegrupoexecutoroc, areaoc
 )
-SELECT sel.idocorrencia, sel.datahora, sel.idsolicitacaoservico,UPPER(s.situacao) AS  situacaoatual, UPPER(sel.categoria) AS  categoriaocorrencia,
+SELECT sel.idocorrencia, sel.datahora, sel.idsolicitacaoservico,replace(UPPER(s.situacao),'"','') AS  situacaoatual, UPPER(sel.categoria) AS  categoriaocorrencia,
 UPPER(sel.situacaosolicitacao) AS  situacaosolicitacao, 
 COALESCE(grupo.idgrupo, stit.idgrupoexecutor)  AS   idgrupoexecutor, 
 UPPER(COALESCE( grupo.nome, stit.nomegrupoexecutoratual))  AS  nomegrupoexecutor, 
@@ -1134,10 +1143,21 @@ WHERE tp.idocorrencia  = o.idocorrencia ;
 /*
 INFORMA COMO DATA DE ENCERRAMENTO DA OCORRENCIA A HORA ATUAL PARA CHAMADOS EM ANDAMENTO
 */
+
+  
+-- USAR A MAXA DATA INICIO MAIS 1 DIA  QUANDO OS DADOS FOREM DESATUALIZADOS
+UPDATE tempanaliseocorrencias SET  datafim = (SELECT  MAX(datainicio) + interval '1 day' FROM tempanaliseocorrencias)
+--SELECT * FROM tempanaliseocorrencias
+WHERE datafim is null
+AND lower(situacaoatual) in ('resolvida','emandamento','reaberta','suspensa');
+
+-- USAR A DATA DO RELÓGIO QUANDO OS DADOS FOREM ATUALIZADOS
 UPDATE tempanaliseocorrencias SET  datafim = clock_timestamp()
 --SELECT * FROM tempanaliseocorrencias
 WHERE datafim is null
 AND lower(situacaoatual) in ('resolvida','emandamento','reaberta','suspensa');
+
+
 
 /*
 INFORMA COMO DATA DE ENCERRAMENTO DA OCORRENCIA A HORA ATUAL PARA CHAMADOS FECHADAS E CANCELADAS
@@ -1401,6 +1421,9 @@ ORDER BY  atividade, transicao, areaoc
 */
 
 --VALIDAÇÃO SE OS TEMPOS DAS OCORRENCIA ESTÁ COERENTE COM AS DURAÇÕES DOS CHAMADOS
+
+drop table TEMP_VERIFICACONSISTENCIADOTEMPOATIVIDADES;
+
 SELECT idsolicitacaoservico, INICIO, FIM , (FIM - INICIO) AS INTERVALOS, 
 ROUND(CAST(EXTRACT(EPOCH FROM (FIM - INICIO))/(60*60) AS NUMERIC(10,4)) ,2) AS DURACAOTOTAL,
 DURACAO AS DURACAOATIVIDADES
@@ -1576,11 +1599,6 @@ WHERE T.event_id = EV.event_id;
 
 
 
-SELECT * 
-FROM tempEventLogforProcessMiningbyArea 
-WHERE case_id IN (19041,18628,15466)
-ORDER BY case_id,event_timeStamp;
-
 
 SELECT case_id, COUNT(*) 
 FROM tempEventLogforProcessMiningbyArea 
@@ -1630,7 +1648,7 @@ ORDER BY date_part('year'::text, event_timeStamp),  date_part('month'::text, eve
 
 /*
 CONSULTA PARA GERAÇÃO DO ARQUIVO DE LOG - GERA ARQUIVO DE LOG DOS CHAMADOS 
-ABERTOS A PARTIR DE SET EMBRO DE 2014 A JANEIRO DE 2015
+ABERTOS A PARTIR DE OUTUBRO DE 2014 A JANEIRO DE 2015
 */
 
 SELECT distinct pm.nomefluxo, pm.situacaosolicitacao , to_char(case_id, '0000000') AS  idSolicitacao , pm.agrupamento, to_char(event_Id, '000000000') AS  idEventolog ,  
@@ -1662,7 +1680,7 @@ WHERE upper(ss.situacao) =  'FECHADA' and
 		FROM tempEventLogforProcessMiningbyArea 
 		where nomefluxo = 'SOLICITACAOSERVICOCOMQUALIDADE'
 		GROUP BY case_id
-		having min(event_timeStamp)>= '2014-12-01 00:00:00' 
+		having min(event_timeStamp)>= '2014-10-01 00:00:00' 
 		order by case_id
    )
 ORDER BY idSolicitacao,dataHoraEventoLog;
